@@ -38,7 +38,7 @@ metadata:
     operators.operatorframework.io/builder: operator-sdk-v1.25.2
     operators.operatorframework.io/project_layout: ansible.sdk.operatorframework.io/v1
     repository: https://github.com/eclipse/amlen
-  name: eclipse-amlen-operator.v1.1.5
+  name: eclipse-amlen-operator.v1.1.6
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
