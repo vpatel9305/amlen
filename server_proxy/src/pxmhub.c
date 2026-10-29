@@ -2721,12 +2721,21 @@ static void mhubApplyBrokerVersions(ism_mhub_t * mhub) {
     if (!mhub->versionKnown)
         return;
 
-    /* Produce */
-    if (mhub->verProduceMin >= 2) {
+    /*
+     * Produce
+     *
+     * Message format 2 (record batch, magic 2) is only valid with Produce v3 or later.
+     * Older code sent Produce v1 with magic-2 batches; Kafka 3.x tolerated that but Kafka 4.x
+     * closes the connection without a response.  The broker's ApiVersions min can still be 0 on
+     * 4.x, so do not depend on min: whenever we send record batches and the broker supports
+     * Produce v3 or later, use min(broker max, 8).  Brokers whose Produce max is below 3 are
+     * left exactly as before.
+     */
+    if ((mhub->messageVersion >= 2 || mhub->verProduceMin >= 3) && mhub->verProduce >= 3) {
         int pv = mhub->verProduce;
         if (pv > KFK4X_PRODUCE_MAX)
             pv = KFK4X_PRODUCE_MAX;
-        if (pv < mhub->verProduceMin || pv < 3) {
+        if (pv < mhub->verProduceMin) {
             TRACE(2, "KFK4X ERROR: broker Produce range min=%u max=%u cannot be used by this proxy (supports 3..%d): mhub=%s\n",
                     mhub->verProduceMin, mhub->verProduce, KFK4X_PRODUCE_MAX, mhub->id);
         } else {
@@ -2737,6 +2746,9 @@ static void mhubApplyBrokerVersions(ism_mhub_t * mhub) {
             mhub->messageVersion = 2;       /* record batch */
             mhub->produceVersion = pv;
         }
+    } else {
+        TRACE(3, "KFK4X Produce version not changed: mhub=%s produce=%u msg=%u (broker min=%u max=%u)\n",
+                mhub->id, mhub->produceVersion, mhub->messageVersion, mhub->verProduceMin, mhub->verProduce);
     }
 
     /* Metadata */
@@ -5150,6 +5162,8 @@ int ism_mhub_message_produce(ism_transport_t * transport, ism_mhub_t * mhub, mhu
 
     ism_kafka_putInt2(buf, ProduceRequest);         /* Api key */
     ism_kafka_putInt2(buf, mhub->produceVersion);  /* produce version */
+    TRACE(4, "KFK4X Produce request header: connect=%u name=%s apiKey=%d apiVersion=%u (this is the version written to the broker; must not be 1 on Kafka 4.x)\n",
+            transport->index, transport->name, ProduceRequest, mhub->produceVersion);
     ism_kafka_putInt4(buf, 1);                      /* CorrID   */
     ism_kafka_putString(buf, transport->name, -1);
     /*
